@@ -19,7 +19,7 @@ if (mode !== "export") {
     const ret = [
       {
         source: "/api/proxy/:path*",
-        destination: "https://xiaojunai.com/api/:path*",
+        destination: "https://api.openai.com/:path*",
       },
       {
         source: "/google-fonts/:path*",
