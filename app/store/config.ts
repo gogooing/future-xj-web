@@ -54,46 +54,57 @@ const ENABLE_GPT4 = true;
 export const ALL_MODELS = [
   {
     name: "gpt-4",
+    label: "XiaoJun 4",
     available: ENABLE_GPT4,
   },
   {
     name: "gpt-4-0314",
+    label: "XiaoJun 4 0314",
     available: ENABLE_GPT4,
   },
   {
     name: "gpt-4-32k",
+    label: "XiaoJun 4 32k",
     available: ENABLE_GPT4,
   },
   {
     name: "gpt-4-32k-0314",
+    label: "XiaoJun 4 32k 0314",
     available: ENABLE_GPT4,
   },
   {
     name: "gpt-3.5-turbo",
+    label: "XiaoJun 3.5",
     available: true,
   },
   {
     name: "gpt-3.5-turbo-0301",
+    label: "XiaoJun 0301",
     available: true,
   },
   {
     name: "qwen-v1", // 通义千问
+    label: "XiaoJun qwen",
     available: false,
   },
   {
     name: "ernie", // 文心一言
+    label: "XiaoJun ernie",
     available: false,
   },
   {
     name: "spark", // 讯飞星火
+    label: "XiaoJun spark",
     available: false,
   },
   {
     name: "llama", // llama
+    label: "XiaoJun llama",
     available: false,
   },
   {
     name: "chatglm", // chatglm-6b
+    label: "XiaoJun chatglm",
     available: false,
   },
 ] as const;

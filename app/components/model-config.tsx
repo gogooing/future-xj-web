@@ -24,7 +24,7 @@ export function ModelConfigList(props: {
         >
           {ALL_MODELS.map((v) => (
             <option value={v.name} key={v.name} disabled={!v.available}>
-              {v.name}
+              {v.label}
             </option>
           ))}
         </Select>

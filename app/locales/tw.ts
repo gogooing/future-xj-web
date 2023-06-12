@@ -206,7 +206,7 @@ const tw: LocaleType = {
   NewChat: {
     Return: "返回",
     Skip: "跳过",
-    Title: "挑选一个面具",
+    Title: "挑选一个助手功能",
     SubTitle: "现在开始，与面具背后的灵魂思维碰撞",
     More: "搜索更多",
     NotShow: "不再展示",
