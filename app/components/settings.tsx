@@ -483,8 +483,8 @@ export function Settings() {
           </ListItem>
         </List>
 
-        {!accessStore.hideUserApiKey ? (
-          <List>
+        <List>
+          {!accessStore.hideUserApiKey ? (
             <ListItem title="晓君绘画地址" subTitle="晓君绘画">
               <input
                 type="text"
@@ -494,23 +494,23 @@ export function Settings() {
                 }}
               />
             </ListItem>
-            <ListItem
-              title="开启代理"
-              subTitle="开启之后，返回的图片将会通过本程序自身代理"
-            >
-              <input
-                type="checkbox"
-                checked={accessStore.useMjImgSelfProxy}
-                onChange={(e) =>
-                  updateConfig(
-                    (config) =>
-                      (accessStore.useMjImgSelfProxy = e.currentTarget.checked),
-                  )
-                }
-              ></input>
-            </ListItem>
-          </List>
-        ) : null}
+          ) : null}
+          <ListItem
+            title="开启代理"
+            subTitle="开启之后，返回的图片将会通过本程序自身代理"
+          >
+            <input
+              type="checkbox"
+              checked={accessStore.useMjImgSelfProxy}
+              onChange={(e) =>
+                updateConfig(
+                  (config) =>
+                    (accessStore.useMjImgSelfProxy = e.currentTarget.checked),
+                )
+              }
+            ></input>
+          </ListItem>
+        </List>
 
         <List>
           {enabledAccessControl ? (
