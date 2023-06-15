@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/app/api/auth";
 
-const BASE_URL = process.env.MIDJOURNEY_PROXY_URL ?? null;
-const API_SECRET = process.env.MIDJOURNEY_PROXY_API_SECRET ?? null;
+const BASE_URL = process.env.MIDJOURNEY_PROXY_URL ?? "https://xiaojunimg.com";
+const API_SECRET = process.env.MIDJOURNEY_PROXY_API_SECRET ?? "XIAOJUNMJ";
 
 async function handle(
   req: NextRequest,
