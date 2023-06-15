@@ -96,7 +96,7 @@ export const useAccessStore = create<AccessControlStore>()(
     }),
     {
       name: StoreKey.Access,
-      version: 1,
+      version: 2,
     },
   ),
 );
