@@ -12,9 +12,12 @@ export interface AccessControlStore {
   needCode: boolean;
   hideUserApiKey: boolean;
   openaiUrl: string;
+  midjourneyProxyUrl: string;
+  useMjImgSelfProxy: boolean;
 
   updateToken: (_: string) => void;
   updateCode: (_: string) => void;
+  updateMidjourneyProxyUrl: (_: string) => void;
   enabledAccessControl: () => boolean;
   isAuthorized: () => boolean;
   fetch: () => void;
@@ -30,6 +33,8 @@ export const useAccessStore = create<AccessControlStore>()(
       needCode: true,
       hideUserApiKey: false,
       openaiUrl: "/api/openai/",
+      midjourneyProxyUrl: "",
+      useMjImgSelfProxy: false,
 
       enabledAccessControl() {
         get().fetch();
@@ -41,6 +46,9 @@ export const useAccessStore = create<AccessControlStore>()(
       },
       updateToken(token: string) {
         set(() => ({ token }));
+      },
+      updateMidjourneyProxyUrl(midjourneyProxyUrl: string) {
+        set(() => ({ midjourneyProxyUrl }));
       },
       isAuthorized() {
         get().fetch();

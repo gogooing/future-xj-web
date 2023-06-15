@@ -107,6 +107,11 @@ export const ALL_MODELS = [
     label: "XiaoJun chatglm",
     available: false,
   },
+  {
+    name: "midjourney", // midjourney
+    label: "XiaoJun Image",
+    available: true,
+  },
 ] as const;
 
 export type ModelType = (typeof ALL_MODELS)[number]["name"];

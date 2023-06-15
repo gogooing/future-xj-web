@@ -8,7 +8,12 @@ import { showToast } from "../components/ui-lib";
 import { ModelType } from "./config";
 import { createEmptyMask, Mask } from "./mask";
 import { StoreKey } from "../constant";
-import { api, RequestMessage } from "../client/api";
+import {
+  api,
+  getHeaders,
+  useGetMidjourneySelfProxyUrl,
+  RequestMessage,
+} from "../client/api";
 import { ChatControllerPool } from "../client/controller";
 import { prettyObject } from "../utils/format";
 
@@ -18,6 +23,7 @@ export type ChatMessage = RequestMessage & {
   isError?: boolean;
   id?: number;
   model?: ModelType;
+  attr?: any;
 };
 
 export function createMessage(override: Partial<ChatMessage>): ChatMessage {
@@ -26,6 +32,7 @@ export function createMessage(override: Partial<ChatMessage>): ChatMessage {
     date: new Date().toLocaleString(),
     role: "user",
     content: "",
+    attr: {},
     ...override,
   };
 }
@@ -85,7 +92,7 @@ interface ChatStore {
   deleteSession: (index: number) => void;
   currentSession: () => ChatSession;
   onNewMessage: (message: ChatMessage) => void;
-  onUserInput: (content: string) => Promise<void>;
+  onUserInput: (content: string, extAttr?: any) => Promise<void>;
   summarizeSession: () => void;
   updateStat: (message: ChatMessage) => void;
   updateCurrentSession: (updater: (session: ChatSession) => void) => void;
@@ -232,9 +239,26 @@ export const useChatStore = create<ChatStore>()(
         get().summarizeSession();
       },
 
-      async onUserInput(content) {
+      async onUserInput(content, extAttr?: any) {
         const session = get().currentSession();
         const modelConfig = session.mask.modelConfig;
+
+        if (
+          extAttr?.mjImageMode &&
+          (extAttr?.useImages?.length ?? 0) > 0 &&
+          extAttr.mjImageMode !== "IMAGINE"
+        ) {
+          if (extAttr.mjImageMode === "BLEND" && extAttr.useImages.length < 2) {
+            alert("混图模式至少需要两张图片");
+            return new Promise((resolve: any, reject) => {
+              resolve(false);
+            });
+          }
+          content = `/mj ${extAttr?.mjImageMode}`;
+          extAttr.useImages.forEach((img: any, index: number) => {
+            content += `::[${index + 1}]${img.filename}`;
+          });
+        }
 
         const userMessage: ChatMessage = createMessage({
           role: "user",
@@ -279,57 +303,282 @@ export const useChatStore = create<ChatStore>()(
 
         // make request
         console.log("[User Input] ", sendMessages);
-        api.llm.chat({
-          messages: sendMessages,
-          config: { ...modelConfig, stream: true },
-          onUpdate(message) {
-            botMessage.streaming = true;
-            if (message) {
-              botMessage.content = message;
+        if (
+          content.toLowerCase().startsWith("/mj") ||
+          content.toLowerCase().startsWith("/MJ")
+        ) {
+          botMessage.model = "midjourney";
+          const startFn = async () => {
+            const prompt = content.substring(3).trim();
+            let action: string = "IMAGINE";
+            const firstSplitIndex = prompt.indexOf("::");
+            if (firstSplitIndex > 0) {
+              action = prompt.substring(0, firstSplitIndex);
             }
-            set(() => ({}));
-          },
-          onFinish(message) {
-            botMessage.streaming = false;
-            if (message) {
-              botMessage.content = message;
-              get().onNewMessage(botMessage);
+            if (
+              ![
+                "UPSCALE",
+                "VARIATION",
+                "IMAGINE",
+                "DESCRIBE",
+                "BLEND",
+                "REROLL",
+              ].includes(action)
+            ) {
+              botMessage.content = "任务提交失败：未知的任务类型";
+              botMessage.streaming = false;
+              return;
             }
-            ChatControllerPool.remove(
-              sessionIndex,
-              botMessage.id ?? messageIndex,
-            );
-            set(() => ({}));
-          },
-          onError(error) {
-            const isAborted = error.message.includes("aborted");
-            botMessage.content =
-              "\n\n" +
-              prettyObject({
-                error: true,
-                message: error.message,
-              });
-            botMessage.streaming = false;
-            userMessage.isError = !isAborted;
-            botMessage.isError = !isAborted;
+            botMessage.attr.action = action;
+            let actionIndex: any = null;
+            let actionUseTaskId: any = null;
+            if (
+              action === "VARIATION" ||
+              action == "UPSCALE" ||
+              action == "REROLL"
+            ) {
+              actionIndex = parseInt(
+                prompt.substring(firstSplitIndex + 2, firstSplitIndex + 3),
+              );
+              actionUseTaskId = prompt.substring(firstSplitIndex + 5);
+            }
+            // console.log(action,actionUseTaskId,actionIndex)
+            try {
+              let res = null;
+              const reqFn = (path: string, method: string, body?: any) => {
+                return fetch("/api/midjourney/mj/" + path, {
+                  method: method,
+                  headers: getHeaders(),
+                  body: body,
+                });
+              };
+              switch (action) {
+                case "IMAGINE": {
+                  res = await reqFn(
+                    "submit/imagine",
+                    "POST",
+                    JSON.stringify({
+                      prompt: prompt,
+                      base64: extAttr?.useImages?.[0]?.base64 ?? null,
+                    }),
+                  );
+                  break;
+                }
+                case "DESCRIBE": {
+                  res = await reqFn(
+                    "submit/describe",
+                    "POST",
+                    JSON.stringify({
+                      base64: extAttr.useImages[0].base64,
+                    }),
+                  );
+                  break;
+                }
+                case "BLEND": {
+                  res = await reqFn(
+                    "submit/blend",
+                    "POST",
+                    JSON.stringify({
+                      base64Array: [
+                        extAttr.useImages[0].base64,
+                        extAttr.useImages[1].base64,
+                      ],
+                    }),
+                  );
+                  break;
+                }
+                case "UPSCALE":
+                case "VARIATION":
+                case "REROLL": {
+                  res = await reqFn(
+                    "submit/change",
+                    "POST",
+                    JSON.stringify({
+                      action: action,
+                      index: actionIndex,
+                      taskId: actionUseTaskId,
+                    }),
+                  );
+                  break;
+                }
+                default:
+              }
+              if (res == null) {
+                botMessage.content = "任务提交失败：不支持的任务类型" + action;
+                botMessage.streaming = false;
+                return;
+              }
+              if (!res.ok) {
+                const text = await res.text();
+                throw new Error(
+                  `\n状态码：${res.status}\n响应体：${text || "无"}`,
+                );
+              }
+              const resJson = await res.json();
+              if (
+                res.status < 200 ||
+                res.status >= 300 ||
+                (resJson.code != 1 && resJson.code != 22)
+              ) {
+                botMessage.content =
+                  "任务提交失败：" +
+                    (resJson?.msg || resJson?.error || resJson?.description) ||
+                  "未知错误";
+              } else {
+                const taskId: string = resJson.result;
+                const prefixContent = `**画面描述:** ${prompt}\n**任务ID:** ${taskId}\n`;
+                botMessage.content =
+                  prefixContent +
+                    `[${new Date().toLocaleString()}] - 任务提交成功：` +
+                    resJson?.description || "请稍等片刻";
+                botMessage.attr.taskId = taskId;
+                const fetchStatus = (taskId: string) => {
+                  setTimeout(async () => {
+                    const statusRes = await fetch(
+                      `/api/midjourney/mj/task/${taskId}/fetch`,
+                      {
+                        method: "GET",
+                        headers: getHeaders(),
+                      },
+                    );
+                    const statusResJson = await statusRes.json();
+                    if (statusRes.status < 200 || statusRes.status >= 300) {
+                      botMessage.content =
+                        "任务状态获取失败：" +
+                          (resJson?.error || resJson?.description) ||
+                        "未知错误";
+                    } else {
+                      let isFinished = false;
+                      let content = "";
+                      switch (statusResJson?.status) {
+                        case "SUCCESS":
+                          content = statusResJson.imageUrl;
+                          isFinished = true;
+                          break;
+                        case "FAILED":
+                          content = statusResJson.failReason || "未知原因";
+                          isFinished = true;
+                          break;
+                        case "NOT_START":
+                          content = "任务未开始";
+                          break;
+                        case "IN_PROGRESS":
+                          content = "任务正在运行";
+                          if (statusResJson.progress) {
+                            content += `，进度：${statusResJson.progress}`;
+                          }
+                          break;
+                        case "SUBMITTED":
+                          content = "任务已提交处理";
+                          break;
+                        default:
+                          content = statusResJson.status;
+                      }
+                      botMessage.attr.status = statusResJson.status;
+                      // console.log(statusResJson)
+                      if (isFinished) {
+                        botMessage.attr.finished = true;
+                        let imgUrl = useGetMidjourneySelfProxyUrl(
+                          statusResJson.imageUrl,
+                        );
+                        botMessage.attr.imgUrl = imgUrl;
+                        botMessage.content =
+                          prefixContent +
+                          `[![${taskId}](${imgUrl})](${imgUrl})`;
+                        if (action === "DESCRIBE") {
+                          botMessage.content += `\n${statusResJson.prompt}`;
+                        }
+                      } else {
+                        botMessage.content =
+                          prefixContent +
+                          `**任务状态:** [${new Date().toLocaleString()}] - ${content}`;
+                        if (
+                          statusResJson.status === "IN_PROGRESS" &&
+                          statusResJson.imageUrl
+                        ) {
+                          let imgUrl = useGetMidjourneySelfProxyUrl(
+                            statusResJson.imageUrl,
+                          );
+                          botMessage.attr.imgUrl = imgUrl;
+                          botMessage.content += `\n[![${taskId}](${imgUrl})](${imgUrl})`;
+                        }
+                        fetchStatus(taskId);
+                      }
+                      set(() => ({}));
+                      extAttr?.setAutoScroll(true);
+                    }
+                  }, 3000);
+                };
+                fetchStatus(taskId);
+              }
+            } catch (e: any) {
+              console.error(e);
+              botMessage.content =
+                "任务提交请求错误：" + (e?.error || e?.message) || "未知错误";
+            } finally {
+              ChatControllerPool.remove(
+                sessionIndex,
+                botMessage.id ?? messageIndex,
+              );
+              botMessage.streaming = false;
+            }
+          };
+          await startFn();
+          get().onNewMessage(botMessage);
+          set(() => ({}));
+        } else {
+          api.llm.chat({
+            messages: sendMessages,
+            config: { ...modelConfig, stream: true },
+            onUpdate(message) {
+              botMessage.streaming = true;
+              if (message) {
+                botMessage.content = message;
+              }
+              set(() => ({}));
+            },
+            onFinish(message) {
+              botMessage.streaming = false;
+              if (message) {
+                botMessage.content = message;
+                get().onNewMessage(botMessage);
+              }
+              ChatControllerPool.remove(
+                sessionIndex,
+                botMessage.id ?? messageIndex,
+              );
+              set(() => ({}));
+            },
+            onError(error) {
+              const isAborted = error.message.includes("aborted");
+              botMessage.content =
+                "\n\n" +
+                prettyObject({
+                  error: true,
+                  message: error.message,
+                });
+              botMessage.streaming = false;
+              userMessage.isError = !isAborted;
+              botMessage.isError = !isAborted;
 
-            set(() => ({}));
-            ChatControllerPool.remove(
-              sessionIndex,
-              botMessage.id ?? messageIndex,
-            );
+              set(() => ({}));
+              ChatControllerPool.remove(
+                sessionIndex,
+                botMessage.id ?? messageIndex,
+              );
 
-            console.error("[Chat] failed ", error);
-          },
-          onController(controller) {
-            // collect controller for stop/retry
-            ChatControllerPool.addController(
-              sessionIndex,
-              botMessage.id ?? messageIndex,
-              controller,
-            );
-          },
-        });
+              console.error("[Chat] failed ", error);
+            },
+            onController(controller) {
+              // collect controller for stop/retry
+              ChatControllerPool.addController(
+                sessionIndex,
+                botMessage.id ?? messageIndex,
+                controller,
+              );
+            },
+          });
+        }
       },
 
       getMemoryPrompt() {

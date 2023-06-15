@@ -21,6 +21,7 @@ import DarkIcon from "../icons/dark.svg";
 import AutoIcon from "../icons/auto.svg";
 import BottomIcon from "../icons/bottom.svg";
 import StopIcon from "../icons/pause.svg";
+import UploadIcon from "../icons/upload.svg";
 
 import {
   ChatMessage,
@@ -61,6 +62,8 @@ import { useMaskStore } from "../store/mask";
 import { useCommand } from "../command";
 import { prettyObject } from "../utils/format";
 import { ExportMessageModal } from "./exporter";
+import { Button } from "emoji-picker-react/src/components/atoms/Button";
+import Image from "next/image";
 
 const Markdown = dynamic(async () => (await import("./markdown")).Markdown, {
   loading: () => <LoadingIcon />,
@@ -307,6 +310,7 @@ export function ChatActions(props: {
   showPromptModal: () => void;
   scrollToBottom: () => void;
   showPromptHints: () => void;
+  imageSelected: (img: any) => void;
   hitBottom: boolean;
 }) {
   const config = useAppConfig();
@@ -315,6 +319,7 @@ export function ChatActions(props: {
 
   // switch themes
   const theme = config.theme;
+
   function nextTheme() {
     const themes = [Theme.Auto, Theme.Light, Theme.Dark];
     const themeIndex = themes.indexOf(theme);
@@ -326,6 +331,25 @@ export function ChatActions(props: {
   // stop all responses
   const couldStop = ChatControllerPool.hasPending();
   const stopAll = () => ChatControllerPool.stopAll();
+
+  function selectImage() {
+    document.getElementById("chat-image-file-select-upload")?.click();
+  }
+
+  const onImageSelected = (e: any) => {
+    console.log(`onImageSelected`, e);
+    const file = e.target.files[0];
+    const filename = file.name;
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const base64 = reader.result;
+      props.imageSelected({
+        filename,
+        base64,
+      });
+    };
+  };
 
   return (
     <div className={chatStyle["chat-input-actions"]}>
@@ -398,6 +422,20 @@ export function ChatActions(props: {
       >
         <BreakIcon />
       </div>
+
+      <div
+        className={`${chatStyle["chat-input-action"]} clickable`}
+        onClick={selectImage}
+      >
+        <input
+          type="file"
+          accept=".png,.jpg,.webp,.jpeg"
+          id="chat-image-file-select-upload"
+          style={{ display: "none" }}
+          onChange={onImageSelected}
+        />
+        <UploadIcon />
+      </div>
     </div>
   );
 }
@@ -417,6 +455,8 @@ export function Chat() {
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [userInput, setUserInput] = useState("");
+  const [useImages, setUseImages] = useState<any[]>([]);
+  const [mjImageMode, setMjImageMode] = useState<string>("BLEND");
   const [isLoading, setIsLoading] = useState(false);
   const { submitKey, shouldSubmit } = useSubmitHandler();
   const { scrollRef, setAutoScroll, scrollToBottom } = useScrollToBottom();
@@ -485,15 +525,38 @@ export function Chat() {
     }
   };
 
-  const doSubmit = (userInput: string) => {
-    if (userInput.trim() === "") return;
+  const doSubmit = async (userInput: string) => {
+    userInput = userInput.trim();
+    console.log(useImages, mjImageMode);
+    if (useImages.length > 0) {
+      if (mjImageMode === "IMAGINE" && userInput == "") {
+        alert("请输入垫图指令画面描述");
+        return;
+      }
+    } else {
+      if (userInput == "") return;
+    }
     setIsLoading(true);
-    chatStore.onUserInput(userInput).then(() => setIsLoading(false));
-    localStorage.setItem(LAST_INPUT_KEY, userInput);
-    setUserInput("");
-    setPromptHints([]);
-    if (!isMobileScreen) inputRef.current?.focus();
-    setAutoScroll(true);
+    try {
+      const res: any = await chatStore.onUserInput(userInput, {
+        useImages,
+        mjImageMode,
+        setAutoScroll,
+      });
+      if (res !== false) {
+        localStorage.setItem(LAST_INPUT_KEY, userInput);
+        setUserInput("");
+        setUseImages([]);
+        setMjImageMode("BLEND");
+        setPromptHints([]);
+        if (!isMobileScreen) inputRef.current?.focus();
+        setAutoScroll(true);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // stop response
@@ -590,7 +653,11 @@ export function Chat() {
     setIsLoading(true);
     const content = session.messages[userIndex].content;
     deleteMessage(userIndex);
-    chatStore.onUserInput(content).then(() => setIsLoading(false));
+    chatStore
+      .onUserInput(content, {
+        setAutoScroll,
+      })
+      .then(() => setIsLoading(false));
     inputRef.current?.focus();
   };
 
@@ -755,7 +822,14 @@ export function Chat() {
               <div
                 key={i}
                 className={
-                  isUser ? styles["chat-message-user"] : styles["chat-message"]
+                  isUser
+                    ? styles["chat-message-user"]
+                    : [
+                        styles["chat-message"],
+                        message.model == "midjourney"
+                          ? styles["chat-model-mj"]
+                          : "",
+                      ].join(" ")
                 }
               >
                 <div className={styles["chat-message-container"]}>
@@ -822,6 +896,95 @@ export function Chat() {
                       defaultShow={i >= messages.length - 10}
                     />
                   </div>
+                  {!isUser &&
+                    message.model == "midjourney" &&
+                    message.attr?.finished &&
+                    ["VARIATION", "IMAGINE"].includes(message.attr?.action) && (
+                      <div
+                        className={[
+                          styles["chat-message-actions"],
+                          styles["column-flex"],
+                        ].join(" ")}
+                      >
+                        <div>
+                          <button
+                            onClick={() =>
+                              doSubmit(`/mj UPSCALE::1::${message.attr.taskId}`)
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            U1
+                          </button>
+                          <button
+                            onClick={() =>
+                              doSubmit(`/mj UPSCALE::2::${message.attr.taskId}`)
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            U2
+                          </button>
+                          <button
+                            onClick={() =>
+                              doSubmit(`/mj UPSCALE::3::${message.attr.taskId}`)
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            U3
+                          </button>
+                          <button
+                            onClick={() =>
+                              doSubmit(`/mj UPSCALE::4::${message.attr.taskId}`)
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            U4
+                          </button>
+                          {/*<button onClick={() => doSubmit(`/mj REROLL::0::${message.attr.taskId}`)} className={`${styles["chat-message-action-btn"]} clickable`}>RESET</button>*/}
+                        </div>
+                        <div>
+                          <button
+                            onClick={() =>
+                              doSubmit(
+                                `/mj VARIATION::1::${message.attr.taskId}`,
+                              )
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            V1
+                          </button>
+                          <button
+                            onClick={() =>
+                              doSubmit(
+                                `/mj VARIATION::2::${message.attr.taskId}`,
+                              )
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            V2
+                          </button>
+                          <button
+                            onClick={() =>
+                              doSubmit(
+                                `/mj VARIATION::3::${message.attr.taskId}`,
+                              )
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            V3
+                          </button>
+                          <button
+                            onClick={() =>
+                              doSubmit(
+                                `/mj VARIATION::4::${message.attr.taskId}`,
+                              )
+                            }
+                            className={`${styles["chat-message-action-btn"]} clickable`}
+                          >
+                            V4
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   {!isUser && !message.preview && (
                     <div className={styles["chat-message-actions"]}>
                       <div className={styles["chat-message-action-date"]}>
@@ -855,7 +1018,57 @@ export function Chat() {
             setUserInput("/");
             onSearch("");
           }}
+          imageSelected={(img: any) => {
+            if (useImages.length >= 2) {
+              alert("最多选择两张图片");
+              return;
+            }
+            setUseImages([...useImages, img]);
+          }}
         />
+        {useImages.length > 0 && (
+          <div className={styles["chat-select-images"]}>
+            {useImages.map((img: any, i) => (
+              <img
+                src={img.base64}
+                key={i}
+                onClick={() => {
+                  setUseImages(useImages.filter((_, ii) => ii != i));
+                }}
+                title={img.filename}
+                alt={img.filename}
+              />
+            ))}
+            <div style={{ fontSize: "12px", marginBottom: "5px" }}>
+              {[
+                { name: "混图(blend)", value: "BLEND" },
+                {
+                  name: "识图(describe)",
+                  value: "DESCRIBE",
+                },
+                { name: "垫图", value: "IMAGINE" },
+              ].map((item, i) => (
+                <label key={i}>
+                  <input
+                    type="radio"
+                    name="mj-img-mode"
+                    checked={mjImageMode == item.value}
+                    value={item.value}
+                    onChange={(e) => {
+                      setMjImageMode(e.target.value);
+                    }}
+                  />
+                  <span>{item.name}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ fontSize: "12px" }}>
+              <small>
+                提示：垫图模式/识图(describe)模式只会使用第一张图片，混图(blend)模式会按顺序使用选中的两张图片（点击图片可以移除）
+              </small>
+            </div>
+          </div>
+        )}
         <div className={styles["chat-input-panel-inner"]}>
           <textarea
             ref={inputRef}
