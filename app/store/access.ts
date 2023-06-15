@@ -35,7 +35,7 @@ export const useAccessStore = create<AccessControlStore>()(
       openaiUrl: "/api/openai/",
       midjourneyProxyUrl:
         "https://midjourney-proxy-production-efdd.up.railway.app/",
-      useMjImgSelfProxy: true,
+      useMjImgSelfProxy: false,
 
       enabledAccessControl() {
         get().fetch();
