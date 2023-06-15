@@ -33,7 +33,8 @@ export const useAccessStore = create<AccessControlStore>()(
       needCode: true,
       hideUserApiKey: false,
       openaiUrl: "/api/openai/",
-      midjourneyProxyUrl: "https://xiaojunimg.com",
+      midjourneyProxyUrl:
+        "https://midjourney-proxy-production-efdd.up.railway.app/",
       useMjImgSelfProxy: false,
 
       enabledAccessControl() {

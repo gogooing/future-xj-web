@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/app/api/auth";
 
-const BASE_URL = process.env.MIDJOURNEY_PROXY_URL ?? "https://xiaojunimg.com";
+const BASE_URL =
+  process.env.MIDJOURNEY_PROXY_URL ??
+  "https://midjourney-proxy-production-efdd.up.railway.app/";
 const API_SECRET = process.env.MIDJOURNEY_PROXY_API_SECRET ?? "XIAOJUNMJ";
 
 async function handle(
