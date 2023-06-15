@@ -495,8 +495,8 @@ export function Settings() {
               />
             </ListItem>
             <ListItem
-              title="Midjourney图片自代理"
-              subTitle="开启之后，返回的Midjourney图片将会通过本程序自身代理，本程序需要处于可以访问cdn.discordapp.com的网络环境中才有效"
+              title="开启代理"
+              subTitle="开启之后，返回的图片将会通过本程序自身代理"
             >
               <input
                 type="checkbox"
